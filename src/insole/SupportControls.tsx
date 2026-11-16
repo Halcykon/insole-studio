@@ -193,7 +193,8 @@ export default function SupportControls({
             ? 0.1
             : key.includes("Height") ||
                 key === "toeSpring" ||
-                key === "heelLift"
+                key === "heelLift" ||
+                key === "heelSkive"
               ? 0.5
               : 1
       }
@@ -537,6 +538,13 @@ export default function SupportControls({
             "mm",
             1,
             "0–40 mm added across the heel seat, blending smoothly to zero by 60% of the insole length.",
+          )}
+          {field(
+            "heelSkive",
+            "Medial heel wedge",
+            "mm",
+            1,
+            "0–10 mm varus wedge: full height at the medial heel edge, zero at the lateral edge, fading to zero by 50% of the insole length. Use 2–4 mm to reduce pronation.",
           )}
           {field(
             "toeSpring",

@@ -48,6 +48,8 @@ export interface InsoleParams {
   heelCupHeight: number;
   /** Added heel-seat thickness, tapering smoothly into the midfoot. */
   heelLift: number;
+  /** Medial heel wedge (varus post): extra height at the medial heel edge, zero at the lateral edge, tapering to zero by mid-foot. */
+  heelSkive: number;
   toeSpring: number;
   pads: MetPad[];
   density: DensityConfig;
@@ -80,6 +82,7 @@ export const NUMERIC_PARAM_KEYS: readonly NumericParamKey[] = [
   "archCurve2",
   "heelCupHeight",
   "heelLift",
+  "heelSkive",
   "toeSpring",
 ];
 
@@ -138,6 +141,7 @@ export const DEFAULT_PARAMS: InsoleParams = {
   archCurve2: 0.35,
   heelCupHeight: 8,
   heelLift: 0,
+  heelSkive: 0,
   toeSpring: 2,
   pads: [{ ...DEFAULT_PAD, id: "met-pad-1", name: "Met pad 1" }],
   density: defaultDensity(),
@@ -162,6 +166,7 @@ export const PARAM_LIMITS: Record<NumericParamKey, readonly [number, number]> =
     archCurve2: [0, 1],
     heelCupHeight: [0, 50],
     heelLift: [0, 40],
+    heelSkive: [0, 10],
     toeSpring: [0, 40],
   };
 
@@ -419,11 +424,16 @@ function height(p: InsoleParams, x: number, y: number) {
   // tapers this added thickness to zero at 60%, with zero slope at both joins.
   // The bottom remains on the print bed; the heel cup rim is added separately.
   const heelLift = p.heelLift * (1 - smoothstep(0.15, 0.6, t));
+  // Medial heel wedge: a linear varus tilt of the heel seat, full height at the
+  // medial edge (u = -1) and zero at the lateral edge (u = +1), fading to zero
+  // by 50% of the insole length. The bottom stays flat on the print bed.
+  const heelSkive =
+    p.heelSkive * ((1 - u) / 2) * (1 - smoothstep(0.2, 0.5, t));
   // Reliefs cut the completed surface, including structural lifts and supports.
   // Their deepest envelope avoids stacking cuts when relief footprints overlap.
   return Math.max(
     MIN_INSOLE_THICKNESS,
-    p.baseThickness + cup + support + toe + heelLift - cutDepth,
+    p.baseThickness + cup + support + toe + heelLift + heelSkive - cutDepth,
   );
 }
 

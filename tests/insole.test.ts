@@ -598,3 +598,24 @@ describe("editable support profiles", () => {
     geometry.dispose();
   });
 });
+
+describe("medial heel wedge (heelSkive)", () => {
+  it("defaults to zero and clamps to 0-10 mm", () => {
+    expect(DEFAULT_PARAMS.heelSkive).toBe(0);
+    expect(clampParams({ heelSkive: -3 }).heelSkive).toBe(0);
+    expect(clampParams({ heelSkive: 50 }).heelSkive).toBe(10);
+  });
+  it("raises the medial heel edge, not the lateral edge, and fades by mid-foot", () => {
+    const base = clampParams({ archHeight: 0, heelCupHeight: 0, heelLift: 0, toeSpring: 0, pads: [] });
+    const wedged = { ...base, heelSkive: 4 };
+    const y = 0.1 * base.length;
+    const edge = outlineAt(base, 0.1);
+    const medialX = edge.left + 0.5;
+    const lateralX = edge.right - 0.5;
+    expect(surfaceHeight(wedged, medialX, y) - surfaceHeight(base, medialX, y)).toBeCloseTo(4, 0);
+    expect(surfaceHeight(wedged, lateralX, y) - surfaceHeight(base, lateralX, y)).toBeCloseTo(0, 0);
+    const yMid = 0.6 * base.length;
+    const edgeMid = outlineAt(base, 0.6);
+    expect(surfaceHeight(wedged, edgeMid.left + 0.5, yMid)).toBeCloseTo(surfaceHeight(base, edgeMid.left + 0.5, yMid), 5);
+  });
+});

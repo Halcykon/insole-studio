@@ -424,7 +424,8 @@ export default function InsoleApp() {
               ? 0.1
               : key.includes("Height") ||
                   key === "toeSpring" ||
-                  key === "heelLift"
+                  key === "heelLift" ||
+                  key === "heelSkive"
                 ? 0.5
                 : 1
       }

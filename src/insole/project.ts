@@ -317,6 +317,12 @@ function readFoot(
     : 0;
   if (!validNumber(heelLift, PARAM_LIMITS.heelLift))
     throw new Error(`Invalid ${side} foot parameter: heelLift.`);
+  // Heel skive (medial wedge) was added to v4 the same way: omission means none.
+  const heelSkive = Object.prototype.hasOwnProperty.call(value, "heelSkive")
+    ? value.heelSkive
+    : 0;
+  if (!validNumber(heelSkive, PARAM_LIMITS.heelSkive))
+    throw new Error(`Invalid ${side} foot parameter: heelSkive.`);
   if (version === 1) {
     for (const key of Object.keys(
       LEGACY_LIMITS,
@@ -329,6 +335,7 @@ function readFoot(
       if (key in LEGACY_LIMITS) migrated[key] = value[key] as number;
     }
     migrated.heelLift = heelLift as number;
+    migrated.heelSkive = heelSkive as number;
     migrated.pads = [
       {
         ...makePad(0),
@@ -351,7 +358,8 @@ function readFoot(
   }
   const result = cloneParams(DEFAULT_PARAMS);
   for (const key of NUMERIC_PARAM_KEYS) {
-    const number = key === "heelLift" ? heelLift : value[key];
+    const number =
+      key === "heelLift" ? heelLift : key === "heelSkive" ? heelSkive : value[key];
     if (!validNumber(number, PARAM_LIMITS[key]))
       throw new Error(`Invalid ${side} foot parameter: ${key}.`);
     result[key] = number as number;
