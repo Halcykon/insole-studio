@@ -619,3 +619,41 @@ describe("medial heel wedge (heelSkive)", () => {
     expect(surfaceHeight(wedged, edgeMid.left + 0.5, yMid)).toBeCloseTo(surfaceHeight(base, edgeMid.left + 0.5, yMid), 5);
   });
 });
+
+describe("measured outline (customOutline)", () => {
+  const stations = Array.from({ length: 41 }, (_, i) => (1 - Math.cos((Math.PI * i) / 40)) / 2);
+  // An asymmetric, trapezoidal outline that closes to a point at both ends.
+  const half = (t: number) =>
+    Math.sqrt(Math.max(0, 1 - ((2 * t - 1) ** 2) ** 3)) * (30 + 22 * t);
+  const outline = {
+    t: stations,
+    left: stations.map((t) => -half(t) + 4 * t),
+    right: stations.map((t) => half(t) + 4 * t),
+  };
+  const params = clampParams({ length: 270, customOutline: outline, pads: [] });
+
+  it("replaces the parametric outline and keeps width as the envelope", () => {
+    const edge = outlineAt(params, 0.5);
+    expect(edge.left).toBeCloseTo(-half(0.5) + 2, 1);
+    expect(edge.right).toBeCloseTo(half(0.5) + 2, 1);
+    const widest = Math.max(...stations.map((t) => 2 * half(t)));
+    expect(params.width).toBeCloseTo(widest, 1);
+  });
+
+  it("builds a watertight solid with a flat bed for both feet", () => {
+    for (const side of ["left", "right"] as const) {
+      const geometry = buildInsoleGeometry(params, side, 96);
+      const stats = geometryStats(geometry);
+      expect(stats.volumeCm3).toBeGreaterThan(20);
+      expect(stats.minThickness).toBeGreaterThan(0);
+    }
+  });
+
+  it("rejects malformed outlines and falls back to the parametric shape", () => {
+    const open = { ...outline, left: [...outline.left] };
+    open.left[0] = -20; // heel end does not close
+    expect(clampParams({ customOutline: open }).customOutline).toBeUndefined();
+    const unordered = { ...outline, t: [...outline.t].reverse() };
+    expect(clampParams({ customOutline: unordered }).customOutline).toBeUndefined();
+  });
+});

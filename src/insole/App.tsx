@@ -1214,6 +1214,18 @@ export default function InsoleApp() {
             <div className="sole-eyebrow">THE PLAN VIEW</div>
             <h2>Outline & landmarks</h2>
             <p>Small points. Precise adjustments.</p>
+            {p.customOutline && (
+              <p>
+                This foot uses a measured outline, so the width, heel, arch
+                width and toe controls are inactive.{" "}
+                <button
+                  type="button"
+                  onClick={() => change({ ...p, customOutline: undefined })}
+                >
+                  Use the parametric outline
+                </button>
+              </p>
+            )}
           </div>
           <div className="sole-outline-canvas">
             <span className="sole-outline-view-label">

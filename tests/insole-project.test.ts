@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_PARAMS, makePad, supportProfile } from "../src/insole/model";
+import {
+  DEFAULT_PARAMS,
+  clampParams,
+  makePad,
+  supportProfile,
+} from "../src/insole/model";
 import { DENSITY_ZONE_LIMITS, makeDensityZone } from "../src/insole/density";
 import {
   BACKUP_STORAGE_KEY,
@@ -992,5 +997,24 @@ describe("private studio preferences", () => {
     expect(BACKUP_STORAGE_KEY).toBe("insole-studio.project.backup");
     expect(PREFERENCES_STORAGE_KEY).toBe("insole-studio.preferences.v1");
     expect(PREFERENCES_COOKIE).toBe("insole_studio_ui");
+  });
+});
+
+describe("customOutline in project files", () => {
+  const t = Array.from({ length: 20 }, (_, i) => i / 19);
+  const half = (x: number) => Math.sqrt(Math.max(0, 1 - (2 * x - 1) ** 2)) * 40;
+  const outline = { t, left: t.map((x) => -half(x)), right: t.map((x) => half(x)) };
+  it("round-trips through save and load and keeps feet independent", () => {
+    const project = newProject();
+    project.linked = false;
+    project.feet.left = clampParams({ ...project.feet.left, customOutline: outline });
+    const restored = parseInsoleProject(JSON.stringify(project));
+    expect(restored.feet.left.customOutline?.t).toHaveLength(20);
+    expect(restored.feet.right.customOutline).toBeUndefined();
+  });
+  it("rejects an unusable outline", () => {
+    const project = JSON.parse(JSON.stringify(newProject()));
+    project.feet.left.customOutline = { t: [0, 1], left: [0, 0], right: [0, 0] };
+    expect(() => parseInsoleProject(JSON.stringify(project))).toThrow(/customOutline/);
   });
 });

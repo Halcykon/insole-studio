@@ -6,6 +6,8 @@ import {
   clampParams,
   cloneParams,
   makePad,
+  sanitizeOutline,
+  type CustomOutline,
   type InsoleParams,
   type MetPad,
 } from "./model";
@@ -304,6 +306,12 @@ function readPads(value: unknown, side: Foot): MetPad[] {
   });
 }
 
+function readCustomOutline(value: unknown, side: Foot): CustomOutline {
+  const outline = sanitizeOutline(value);
+  if (!outline) throw new Error(`Invalid ${side} foot parameter: customOutline.`);
+  return outline;
+}
+
 function readFoot(
   value: unknown,
   side: Foot,
@@ -365,6 +373,8 @@ function readFoot(
     result[key] = number as number;
   }
   result.pads = readPads(value.pads, side);
+  if (value.customOutline !== undefined)
+    result.customOutline = readCustomOutline(value.customOutline, side);
   if (version >= 3)
     result.density = readDensity(
       value.density,
@@ -425,6 +435,8 @@ function sameDensity(a: DensityConfig, b: DensityConfig): boolean {
 export function sameParams(a: InsoleParams, b: InsoleParams): boolean {
   return (
     NUMERIC_PARAM_KEYS.every((key) => a[key] === b[key]) &&
+    JSON.stringify(a.customOutline ?? null) ===
+      JSON.stringify(b.customOutline ?? null) &&
     sameDensity(a.density, b.density) &&
     a.pads.length === b.pads.length &&
     a.pads.every((pad, index) => {
