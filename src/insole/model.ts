@@ -28,6 +28,18 @@ export interface MetPad {
   curve2: number;
 }
 
+/**
+ * A measured plan-view outline (for example from a foot scan) that replaces the
+ * parametric outline. Stations run heel (t = 0) to toe (t = 1). `left` and
+ * `right` are x extents in canonical right-foot coordinates (negative = medial),
+ * so the left insole is mirrored as usual. Both ends must close to zero width.
+ */
+export interface CustomOutline {
+  t: number[];
+  left: number[];
+  right: number[];
+}
+
 export interface InsoleParams {
   length: number;
   width: number;
@@ -48,12 +60,19 @@ export interface InsoleParams {
   heelCupHeight: number;
   /** Added heel-seat thickness, tapering smoothly into the midfoot. */
   heelLift: number;
+  /** Medial heel wedge (varus post): extra height at the medial heel edge, zero at the lateral edge, tapering to zero by mid-foot. */
+  heelSkive: number;
   toeSpring: number;
+  /** Optional measured outline. When present it replaces width, heelWidth, archWidth and toeShape. */
+  customOutline?: CustomOutline;
   pads: MetPad[];
   density: DensityConfig;
 }
 
-export type NumericParamKey = Exclude<keyof InsoleParams, "pads" | "density">;
+export type NumericParamKey = Exclude<
+  keyof InsoleParams,
+  "pads" | "density" | "customOutline"
+>;
 export type NumericPadKey = Exclude<
   keyof MetPad,
   "id" | "name" | "enabled" | "operation"
@@ -80,6 +99,7 @@ export const NUMERIC_PARAM_KEYS: readonly NumericParamKey[] = [
   "archCurve2",
   "heelCupHeight",
   "heelLift",
+  "heelSkive",
   "toeSpring",
 ];
 
@@ -138,6 +158,7 @@ export const DEFAULT_PARAMS: InsoleParams = {
   archCurve2: 0.35,
   heelCupHeight: 8,
   heelLift: 0,
+  heelSkive: 0,
   toeSpring: 2,
   pads: [{ ...DEFAULT_PAD, id: "met-pad-1", name: "Met pad 1" }],
   density: defaultDensity(),
@@ -162,6 +183,7 @@ export const PARAM_LIMITS: Record<NumericParamKey, readonly [number, number]> =
     archCurve2: [0, 1],
     heelCupHeight: [0, 50],
     heelLift: [0, 40],
+    heelSkive: [0, 10],
     toeSpring: [0, 40],
   };
 
@@ -185,6 +207,13 @@ function clamp(value: number, min: number, max: number) {
 export function cloneParams(params: InsoleParams): InsoleParams {
   return {
     ...params,
+    customOutline: params.customOutline
+      ? {
+          t: [...params.customOutline.t],
+          left: [...params.customOutline.left],
+          right: [...params.customOutline.right],
+        }
+      : undefined,
     pads: params.pads.map((pad) => ({ ...pad })),
     density: cloneDensity(params.density),
   };
@@ -203,6 +232,18 @@ export function clampParams(input: Partial<InsoleParams>): InsoleParams {
       min,
       max,
     );
+  }
+  const custom = sanitizeOutline(input.customOutline);
+  if (custom) {
+    result.customOutline = custom;
+    // `width` stays the maximum envelope for fit checks and mesh sampling.
+    result.width = clamp(
+      Math.max(...custom.right.map((r, i) => r - custom.left[i])),
+      PARAM_LIMITS.width[0],
+      PARAM_LIMITS.width[1],
+    );
+  } else {
+    delete result.customOutline;
   }
   result.heelWidth = Math.min(result.heelWidth, result.width * 0.94);
   result.archWidth = Math.min(result.archWidth, result.width * 0.96);
@@ -305,8 +346,48 @@ function mix(a: number, b: number, u: number) {
   return a + (b - a) * u;
 }
 
+/** Returns a validated copy, or undefined when the table is unusable. */
+export function sanitizeOutline(input: unknown): CustomOutline | undefined {
+  if (!input || typeof input !== "object") return undefined;
+  const { t, left, right } = input as Partial<CustomOutline>;
+  if (!Array.isArray(t) || !Array.isArray(left) || !Array.isArray(right))
+    return undefined;
+  const n = t.length;
+  if (n < 8 || n > 400 || left.length !== n || right.length !== n)
+    return undefined;
+  const finite = (v: unknown, lo: number, hi: number) =>
+    typeof v === "number" && Number.isFinite(v) && v >= lo && v <= hi;
+  for (let i = 0; i < n; i++) {
+    if (!finite(t[i], 0, 1) || !finite(left[i], -150, 150)) return undefined;
+    if (!finite(right[i], -150, 150) || right[i] < left[i]) return undefined;
+    if (i > 0 && !(t[i] > t[i - 1])) return undefined;
+  }
+  // Both ends must close to a point so the end fans stay watertight.
+  if (t[0] !== 0 || t[n - 1] !== 1) return undefined;
+  if (right[0] - left[0] > 0.5 || right[n - 1] - left[n - 1] > 0.5)
+    return undefined;
+  return { t: [...t], left: [...left], right: [...right] };
+}
+
+function customProfile(outline: CustomOutline, t: number) {
+  const { t: ts, left, right } = outline;
+  let lo = 0;
+  let hi = ts.length - 1;
+  while (hi - lo > 1) {
+    const mid = (lo + hi) >> 1;
+    if (ts[mid] <= t) lo = mid;
+    else hi = mid;
+  }
+  const u = (t - ts[lo]) / (ts[hi] - ts[lo]);
+  return {
+    left: mix(left[lo], left[hi], u),
+    right: mix(right[lo], right[hi], u),
+  };
+}
+
 function profile(p: InsoleParams, value: number) {
   const t = clamp(Number.isFinite(value) ? value : 0, 0, 1);
+  if (p.customOutline) return customProfile(p.customOutline, t);
   let span: number;
   if (t < 0.14) {
     // Elliptical heel, with a horizontal tangent at its widest station.
@@ -419,11 +500,16 @@ function height(p: InsoleParams, x: number, y: number) {
   // tapers this added thickness to zero at 60%, with zero slope at both joins.
   // The bottom remains on the print bed; the heel cup rim is added separately.
   const heelLift = p.heelLift * (1 - smoothstep(0.15, 0.6, t));
+  // Medial heel wedge: a linear varus tilt of the heel seat, full height at the
+  // medial edge (u = -1) and zero at the lateral edge (u = +1), fading to zero
+  // by 50% of the insole length. The bottom stays flat on the print bed.
+  const heelSkive =
+    p.heelSkive * ((1 - u) / 2) * (1 - smoothstep(0.2, 0.5, t));
   // Reliefs cut the completed surface, including structural lifts and supports.
   // Their deepest envelope avoids stacking cuts when relief footprints overlap.
   return Math.max(
     MIN_INSOLE_THICKNESS,
-    p.baseThickness + cup + support + toe + heelLift - cutDepth,
+    p.baseThickness + cup + support + toe + heelLift + heelSkive - cutDepth,
   );
 }
 

@@ -6,6 +6,8 @@ import {
   clampParams,
   cloneParams,
   makePad,
+  sanitizeOutline,
+  type CustomOutline,
   type InsoleParams,
   type MetPad,
 } from "./model";
@@ -304,6 +306,12 @@ function readPads(value: unknown, side: Foot): MetPad[] {
   });
 }
 
+function readCustomOutline(value: unknown, side: Foot): CustomOutline {
+  const outline = sanitizeOutline(value);
+  if (!outline) throw new Error(`Invalid ${side} foot parameter: customOutline.`);
+  return outline;
+}
+
 function readFoot(
   value: unknown,
   side: Foot,
@@ -317,6 +325,12 @@ function readFoot(
     : 0;
   if (!validNumber(heelLift, PARAM_LIMITS.heelLift))
     throw new Error(`Invalid ${side} foot parameter: heelLift.`);
+  // Heel skive (medial wedge) was added to v4 the same way: omission means none.
+  const heelSkive = Object.prototype.hasOwnProperty.call(value, "heelSkive")
+    ? value.heelSkive
+    : 0;
+  if (!validNumber(heelSkive, PARAM_LIMITS.heelSkive))
+    throw new Error(`Invalid ${side} foot parameter: heelSkive.`);
   if (version === 1) {
     for (const key of Object.keys(
       LEGACY_LIMITS,
@@ -329,6 +343,7 @@ function readFoot(
       if (key in LEGACY_LIMITS) migrated[key] = value[key] as number;
     }
     migrated.heelLift = heelLift as number;
+    migrated.heelSkive = heelSkive as number;
     migrated.pads = [
       {
         ...makePad(0),
@@ -351,12 +366,15 @@ function readFoot(
   }
   const result = cloneParams(DEFAULT_PARAMS);
   for (const key of NUMERIC_PARAM_KEYS) {
-    const number = key === "heelLift" ? heelLift : value[key];
+    const number =
+      key === "heelLift" ? heelLift : key === "heelSkive" ? heelSkive : value[key];
     if (!validNumber(number, PARAM_LIMITS[key]))
       throw new Error(`Invalid ${side} foot parameter: ${key}.`);
     result[key] = number as number;
   }
   result.pads = readPads(value.pads, side);
+  if (value.customOutline !== undefined)
+    result.customOutline = readCustomOutline(value.customOutline, side);
   if (version >= 3)
     result.density = readDensity(
       value.density,
@@ -417,6 +435,8 @@ function sameDensity(a: DensityConfig, b: DensityConfig): boolean {
 export function sameParams(a: InsoleParams, b: InsoleParams): boolean {
   return (
     NUMERIC_PARAM_KEYS.every((key) => a[key] === b[key]) &&
+    JSON.stringify(a.customOutline ?? null) ===
+      JSON.stringify(b.customOutline ?? null) &&
     sameDensity(a.density, b.density) &&
     a.pads.length === b.pads.length &&
     a.pads.every((pad, index) => {

@@ -259,6 +259,7 @@ export function getDensityRegions(p: InsoleParams): DensityRegion[] {
   const top =
     p.baseThickness +
     p.heelLift +
+    p.heelSkive +
     p.archHeight +
     p.heelCupHeight +
     p.toeSpring +

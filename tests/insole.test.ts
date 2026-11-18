@@ -598,3 +598,62 @@ describe("editable support profiles", () => {
     geometry.dispose();
   });
 });
+
+describe("medial heel wedge (heelSkive)", () => {
+  it("defaults to zero and clamps to 0-10 mm", () => {
+    expect(DEFAULT_PARAMS.heelSkive).toBe(0);
+    expect(clampParams({ heelSkive: -3 }).heelSkive).toBe(0);
+    expect(clampParams({ heelSkive: 50 }).heelSkive).toBe(10);
+  });
+  it("raises the medial heel edge, not the lateral edge, and fades by mid-foot", () => {
+    const base = clampParams({ archHeight: 0, heelCupHeight: 0, heelLift: 0, toeSpring: 0, pads: [] });
+    const wedged = { ...base, heelSkive: 4 };
+    const y = 0.1 * base.length;
+    const edge = outlineAt(base, 0.1);
+    const medialX = edge.left + 0.5;
+    const lateralX = edge.right - 0.5;
+    expect(surfaceHeight(wedged, medialX, y) - surfaceHeight(base, medialX, y)).toBeCloseTo(4, 0);
+    expect(surfaceHeight(wedged, lateralX, y) - surfaceHeight(base, lateralX, y)).toBeCloseTo(0, 0);
+    const yMid = 0.6 * base.length;
+    const edgeMid = outlineAt(base, 0.6);
+    expect(surfaceHeight(wedged, edgeMid.left + 0.5, yMid)).toBeCloseTo(surfaceHeight(base, edgeMid.left + 0.5, yMid), 5);
+  });
+});
+
+describe("measured outline (customOutline)", () => {
+  const stations = Array.from({ length: 41 }, (_, i) => (1 - Math.cos((Math.PI * i) / 40)) / 2);
+  // An asymmetric, trapezoidal outline that closes to a point at both ends.
+  const half = (t: number) =>
+    Math.sqrt(Math.max(0, 1 - ((2 * t - 1) ** 2) ** 3)) * (30 + 22 * t);
+  const outline = {
+    t: stations,
+    left: stations.map((t) => -half(t) + 4 * t),
+    right: stations.map((t) => half(t) + 4 * t),
+  };
+  const params = clampParams({ length: 270, customOutline: outline, pads: [] });
+
+  it("replaces the parametric outline and keeps width as the envelope", () => {
+    const edge = outlineAt(params, 0.5);
+    expect(edge.left).toBeCloseTo(-half(0.5) + 2, 1);
+    expect(edge.right).toBeCloseTo(half(0.5) + 2, 1);
+    const widest = Math.max(...stations.map((t) => 2 * half(t)));
+    expect(params.width).toBeCloseTo(widest, 1);
+  });
+
+  it("builds a watertight solid with a flat bed for both feet", () => {
+    for (const side of ["left", "right"] as const) {
+      const geometry = buildInsoleGeometry(params, side, 96);
+      const stats = geometryStats(geometry);
+      expect(stats.volumeCm3).toBeGreaterThan(20);
+      expect(stats.minThickness).toBeGreaterThan(0);
+    }
+  });
+
+  it("rejects malformed outlines and falls back to the parametric shape", () => {
+    const open = { ...outline, left: [...outline.left] };
+    open.left[0] = -20; // heel end does not close
+    expect(clampParams({ customOutline: open }).customOutline).toBeUndefined();
+    const unordered = { ...outline, t: [...outline.t].reverse() };
+    expect(clampParams({ customOutline: unordered }).customOutline).toBeUndefined();
+  });
+});

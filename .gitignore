@@ -11,3 +11,5 @@ playwright-report/
 *.stl
 *.3mf
 *.zip
+scripts/generate.mjs
+scripts/dump.mjs
